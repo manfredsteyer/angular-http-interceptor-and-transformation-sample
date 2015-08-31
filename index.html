@@ -1,0 +1,488 @@
+<html>
+
+    <head>
+        <title>Demo</title>
+        
+         
+        <link href="scripts/bootstrap/dist/css/bootstrap.css" rel="stylesheet">
+        
+    </head>
+
+    <body>
+        
+        <div ng-app="flug" >
+
+            <div ng-controller="FlugBuchenCtrl">
+
+                <div class="container">
+
+                    <div>
+                    <h2>Flug auswählen</h2>
+
+                    <div ng-show="vm.message" class="message">
+                        {{ vm.message }}
+                    </div>
+                        
+                    <div ng-show="fehler" class="message">
+                        {{ fehler }}
+                    </div>
+
+                    <div class="form-group">
+                        <label>Flugnummer</label>
+                        <input ng-model="vm.flugNummerFilter" class="form-control" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Von</label>
+                        <input ng-model="vm.flugVonFilter" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label>Nach</label>
+                        <input ng-model="vm.flugNachFilter" class="form-control" />
+                    </div>
+
+                    <div class="form-group">
+                        <input type="button" value="Suchen" ng-click="vm.loadFluege()" class="btn" />
+                        <input type="button" value="Suchen (XML)" ng-click="vm.loadFluege2()" class="btn" />
+                        <input type="button" value="Buchen (XML)" ng-click="vm.buchen()" class="btn" />
+                        <input type="button" value="Suchen (JSONP)" ng-click="vm.loadFluegeJSONP()" class="btn" />
+                        
+                        <input type="button" value="Suchen ($http als Funktion)" ng-click="vm.loadFluegeHttpFunction()" class="btn" />
+                        <input type="button" value="Suchen (Interceptor-Test)" ng-click="vm.loadFluegeWithInterceptor()" class="btn" />
+                        
+                        
+                        
+                        
+                    </div>
+                    </div>
+                    
+                    
+                        <table ng-show="vm.fluege.length > 0" class="table table-striped">
+                            <tr>
+                                <th><a ng-click="vm.setSortColumn('id')" href="javascript:void(0)">Id</a></th>
+                                <th><a ng-click="vm.setSortColumn('datum.getTime()')" href="javascript:void(0)">Datum</a></th>
+                                <th><a ng-click="vm.setSortColumn('abflugort')" href="javascript:void(0)">Abflugort</a></th>
+                                <th><a ng-click="vm.setSortColumn('zielort')" href="javascript:void(0)">Zielort</a></th>
+                                <th>Aktion</th>
+                            </tr>
+                            <tr ng-repeat="f in vm.fluege" 
+                                ng-class="{ info: f.id == vm.selectedFlug.id }">
+                                <td>{{f.id | flugNr:'long' }}</td>
+                                <td>{{f.datum | date:'shortDate'}}</td>
+                                <td>{{f.abflugort  }}</td>
+                                <td>{{f.zielort  }}</td>
+                                <td><a href="" 
+                                       ng-click="vm.selectFlug(f)">Auswählen</a></td>
+                            </tr>
+                        </table> 
+
+
+                </div>
+            </div>
+
+
+        </div>
+    
+        <script src="scripts/angular/angular.js"></script>
+        <script src="scripts/angular-cookies/angular-cookies.js"></script>
+        <script src="scripts/x2js/xml2json.min.js"></script>
+        
+        <script>
+        
+            
+            var app = angular.module("flug", ["ngCookies"]);
+
+            //app.constant("baseUrl", "http://flugapi.azurewebsites.net");
+            app.constant("baseUrl", "http://localhost:50090");
+
+            // Alle Methoden sind optional!
+            app.factory('sampleHttpInjector', function($q, $rootScope) {
+                  return {
+                    'request': function(config) {
+                       return config;
+                       // return $q.reject("BLA");
+                    },
+                   'requestError': function(rejection) {
+                      return $q.reject(rejection);
+                    },
+                    'response': function(response) {
+                      return response;
+                    },
+                   'responseError': function(rejection) {
+
+                        if(rejection.status > 299){
+                            $rootScope.error = "Fehler beim Abrufen von Daten: " 
+                                                    + rejection.status 
+                                                    + " " + rejection.statusText;
+
+                            return $q.reject(rejection);
+                        }
+
+                        return $q.reject(rejection);
+                    }
+                  };
+                });
+
+
+            app.config(function($httpProvider) {  
+                $httpProvider.interceptors.push('sampleHttpInjector');
+                //$httpProvider.defaults.headers.common["X-API-Version"] = "1.12";
+                $httpProvider.defaults.xsrfCookieName = "TOKEN";
+                $httpProvider.defaults.xsrfHeaderName = "X-TOKEN";
+                
+                $httpProvider.defaults.withCredentials = true;
+
+            });
+
+
+            app.run(function($http) {
+                $http.defaults.headers.get = {"X-API-Version": "1.13"};
+                $http.defaults.headers.common["Authorization"] = "Basic d2lraTpwZWRpYQ==";
+
+                $http.defaults.xsrfCookieName = "TOKEN";
+                $http.defaults.xsrfHeaderName = "X-TOKEN";
+
+
+            });
+            
+            app.filter("flugNr", function() { 
+
+                return function(value, format) {
+
+                    if (format == 'short') return value;
+                    switch(parseInt(value)) {
+                        case 1: return "LH4711";
+                        case 2: return "LH4712";
+                        case 3: return "LH4713";
+                        default: value;    
+                    }
+
+                }
+
+            });
+
+
+            app.controller("FlugBuchenCtrl", function ($scope, $http, baseUrl, $log) {
+                $scope.vm = new FlugBuchenVM($http, baseUrl, $log);
+            });
+            
+            
+            // app.controller("FlugBuchenVM", FlugBuchenVM);
+            
+            function Flug(id, abflugort, zielort, datum) {
+                this.id = id;
+                this.abflugort = abflugort;
+                this.zielort = zielort;
+                this.datum = datum;
+            }
+
+            function FlugBuchenVM($http, baseUrl, $log) {
+                var that = this;
+
+                this.fluege = new Array();
+
+                this.selectedFlug = { id: 1 };
+                this.message = "";
+
+                this.flugNummerFilter = "";
+                this.flugVonFilter = "";
+                this.flugNachFilter = "";
+                
+                this.flugVonClientFilter = "";
+                this.flugNachClientFilter = "";
+                
+                this.selectedPassagier = {
+                    id: 1    
+                };
+                
+                this.selectFlug = function(f) {
+                    this.selectedFlug = f;
+                }
+
+                this.loadFluege = function () {
+
+                    var params = {};
+
+                    if (that.flugNummerFilter) {
+                        params = {
+                            flugNummer: that.flugNummerFilter
+                        };
+                    } else {
+                        params = {
+                            abflugOrt: that.flugVonFilter,
+                            zielOrt: that.flugNachFilter
+                        };
+                    }
+
+                    var headers = { 
+                        "Accept-Language": "de-DE;de-AT;de;en-UK;en-US;en",
+                       // "X-API-Version": undefined
+                    
+                    };
+
+                    var options = { 
+                        params: params, 
+                        headers: headers 
+                    };
+
+                    $http
+                        .get(baseUrl + "/api/flug", options)
+                        .then(function (result) {
+
+                            $log.log("status: " + result.status);
+                            $log.log("statusText : " + result.statusText);
+                            $log.log("headers: " + result.headers("content-type"));
+
+                            if (angular.isArray(result.data)) {
+                                that.fluege = result.data;
+                            }
+                            else {
+                                that.fluege = [result.data];
+                            }
+
+
+                    }).catch(function (result) {
+                        that.message = "Fehler: " + result.status + " " + result.statusText + ", ";
+                    });
+
+                }
+                
+
+                
+                this.loadFluegeWithInterceptor = function () {
+
+                    var params = {};
+/*
+                    if (that.flugNummerFilter) {
+                        params = {
+                            flugNummer: that.flugNummerFilter
+                        };
+                    } else {
+                        params = {
+                            abflugOrt: that.flugVonFilter,
+                            zielOrt: that.flugNachFilter
+                        };
+                    }
+                    
+*/
+                    params.statusCode = 401;
+
+                    $http
+                        .get(baseUrl + "/api/flug", { params: params })
+                        .then(function (result) {
+
+                        
+                            if (angular.isArray(result.data)) {
+                                that.fluege = result.data;
+                            }
+                            else {
+                                that.fluege = [result.data];
+                            }
+
+
+                    }).catch(function (result) {
+                        that.message = "Fehler: " + result.status + " " + result.statusText + ", " + result.data.message;
+                    });
+
+                }
+
+                
+                
+                this.loadFluegeHttpFunction = function () {
+
+                    var params = {};
+
+                    if (that.flugNummerFilter) {
+                        params = {
+                            flugNummer: that.flugNummerFilter
+                        };
+                    } else {
+                        params = {
+                            abflugOrt: that.flugVonFilter,
+                            zielOrt: that.flugNachFilter
+                        };
+                    }
+
+                    $http({method: "GET", url: baseUrl + "/api/flug", params: params}).then(function (result) {
+                            $log.log("status: " + result.status);
+                            $log.log("statusText : " + result.statusText);
+                            $log.log("headers: " + result.headers("content-type"));
+
+                            if (angular.isArray(result.data)) {
+                                that.fluege = result.data;
+                            }
+                            else {
+                                that.fluege = [result.data];
+                            }
+
+
+                    }).catch(function (result) {
+                        that.message = "Fehler: " + result.status + " " + result.statusText + ", " + result.data.message;
+                    });
+
+                }
+
+                
+                this.loadFluege2 = function () {
+
+                    var params = {};
+
+                    if (that.flugNummerFilter) {
+                        params = {
+                            flugNummer: that.flugNummerFilter
+                        };
+                    } else {
+                        params = {
+                            abflugOrt: that.flugVonFilter,
+                            zielOrt: that.flugNachFilter
+                        };
+                    }
+
+
+                    var headers = { 
+
+                        "Accept": "application/xml",
+                        "Accept-Language": "de"
+
+                    };
+
+                    var transformXmlResponse = function(data, headersGetter, status) {
+
+                        var headers = headersGetter();
+
+                        var contentType = headers["content-type"];
+
+                        if (contentType.indexOf("xml") === -1) {
+                            return data;   
+                        }
+
+                        var x2js = new X2JS(); 
+                        var json = x2js.xml_str2json(data);
+                        return json;
+
+                    };
+
+                    var options = {
+                        params: params,
+                        headers: headers,
+                        transformResponse: transformXmlResponse
+                    };
+
+                    $http
+                        .get(baseUrl + "/api/flug", options)
+                        .then(function (result) {
+
+                            var data = result.data.ArrayOfFlug.Flug;
+
+                            if (angular.isArray(data)) {
+                                that.fluege = data;
+                            }
+                            else {
+                                that.fluege = [data];
+                            }
+
+
+                    }).catch(function (result) {
+                        that.message = "Fehler: " + result.status + " " + result.statusText + ", " + result.data.message;
+                    });
+
+                }
+                
+                                
+                
+                this.loadFluegeJSONP = function () {
+
+                    var params = {};
+
+                    if (that.flugNummerFilter) {
+                        params = {
+                            flugNummer: that.flugNummerFilter
+                        };
+                    } else {
+                        params = {
+                            abflugOrt: that.flugVonFilter,
+                            zielOrt: that.flugNachFilter
+                        };
+                    }
+
+                    params.callback="JSON_CALLBACK";
+
+                    $http
+                        .jsonp(baseUrl + "/home/JSONP", { params: params })
+                        .then(function (result) {
+
+                            if (angular.isArray(result.data)) {
+                                that.fluege = result.data;
+                            }
+                            else {
+                                that.fluege = [result.data];
+                            }
+
+
+                    }).catch(function (result) {
+                        that.message = "Fehler: " + result.status + " " + result.statusText + ", " + result.data.message;
+                    });
+
+                }
+
+                
+                this.buchen = function () {
+                    var that = this;
+
+
+                    var transformXmlRequest = function(data, headersGetter) {
+
+                         var headers = headersGetter();
+                         var contentType = headers["Content-Type"];
+
+                         if (contentType.indexOf("xml") !== -1) {
+                             var x2js = new X2JS(); 
+                             var xmlString = x2js.json2xml_str(data);
+                             return xmlString;    
+                         }
+                        return data;
+
+                    }
+
+                    var options = {
+                        transformRequest: transformXmlRequest,
+                        headers: {
+                            "Content-Type": "text/xml"    
+                        }
+                    };
+
+
+                    if (!that.selectedFlug || !that.selectedPassagier) {
+                        that.message = "Bitte wählen Sie einen Flug und einen Passagier aus!";
+                        return;
+                    }
+
+                    var buchung = {
+                        Buchung: {
+                            "_xmlns": "http://schemas.datacontract.org/2004/07/SVC.Controllers",
+                            FlugID: that.selectedFlug.id,
+                            PassagierID: that.selectedPassagier.id
+                        }
+                    };
+
+                    $http.post(baseUrl + "/api/buchung", buchung, options).then(function (result) {
+                        that.message = "Gebucht!";
+                    }).catch(function (reason) {
+                        that.message = "Der Flug konnte nicht gebucht werden: " + reason;
+                    });
+                };
+
+
+                
+                
+              
+            }
+            
+          document.cookie = "TOKEN=123ABCX";
+            
+
+        </script>
+        
+    </body>
+    
+</html>
